@@ -1,0 +1,11 @@
+name: fcsrl
+dependencies:
+- python=3.8
+- pip
+- pip:
+  - numpy
+  - tqdm
+  - pyyaml
+  - argparse
+  - wandb
+  - safety-gymnasium

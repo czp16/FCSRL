@@ -1,0 +1,64 @@
+
+agent:
+    discount_gamma: 0.99
+    rew_norm: false
+    soft_update_tau: 0.05
+    explore_noise_std: 0.05
+    policy_noise: 0.2
+    noise_clip: 0.5
+    update_actor_freq: 2
+    nstep_return: 10
+    unroll_length: 4
+    obs_normalizer: BaseNormalizer    
+
+network:
+    # actor_network: ActorProb
+    z_dim: 128
+    actor_lr: 0.0003
+    critic_lr: 0.0003
+    encoder_lr: 0.0003
+    actor_hidden_dim: [256, 256]
+    encoder_hidden_dim: [256, 256]
+    r_critic_hidden_dim: [256, 256]
+    c_critic_hidden_dim: [256, 256]
+    discrete_n_buckets: 63 # discrete regression
+    discrete_range: [-2.0, 4.0]
+    repr_type: "FCSRL"
+
+env:
+    name: "SafetyPointGoal1Gymnasium-v0"
+    num_env_train: 8 
+    num_env_test: 10
+    max_episode_len: 1000
+
+trainer:
+    replay_size: 100000
+    warmup_episode: 32
+    epoch: 13
+    grad_step_per_epoch: 2500
+    collect_len_per_step: 32
+    batch_size: 256
+
+    test_episode: 10
+
+    writer_dir: "exp/log"
+    model_dir: "exp/model"
+
+Lagrangian:
+    init_lagrg: 0.0
+    KP: 0.02
+    KI: 0.005
+    KD: 0.01
+    max_lambda: &MAX_LAMBDA 0.75
+    constraint_threshold: &CONSTRAINT_THRESHOLD 10
+    update_by_J: True  # else update by E[q_c]
+    schedule_threshold: True
+    threshold_start: 100
+    threshold_end: *CONSTRAINT_THRESHOLD
+    schedule_epoch: 2
+
+misc:
+    seed: 1000
+    cudaid: -1
+    render: 0.0
+    test: False
