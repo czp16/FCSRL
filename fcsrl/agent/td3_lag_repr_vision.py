@@ -1,3 +1,4 @@
+from typing import Optional, Any, Tuple, Dict, Union, List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,16 +7,22 @@ import numpy as np
 import pickle
 from copy import deepcopy
 import time
-# from kornia.augmentation import RandomCrop
 
 from fcsrl.agent import BaseAgent
-from fcsrl.data import Batch
+from fcsrl.data import Batch, ReplayBuffer
 from fcsrl.network import MLP, ConvEncoder, ActorDeter, EnsembleCritic
 from fcsrl.utils import DeviceConfig, to_tensor, GaussianNoise, to_numpy, _nstep_return, \
-    MeanStdNormalizer, PIDLagrangianUpdater, DiscDist, cosine_sim_loss, soft_update
+    BaseNormalizer, PIDLagrangianUpdater, DiscDist, cosine_sim_loss, soft_update
 
 # an accelerated version to compute the N-step feasibility
-def _nstep_feasbility(cost, end_flag, target_f, indices, discount, n_step):
+def _nstep_feasbility(
+    cost: np.ndarray, 
+    end_flag: np.ndarray, 
+    target_f: np.ndarray, 
+    indices: np.ndarray, 
+    discount: float, 
+    n_step: int,
+) -> np.ndarray:
     N = n_step
     feasi_score = [target_f]
     for n in reversed(range(N)):
@@ -40,7 +47,7 @@ class TD3LagReprVisionAgent(BaseAgent):
     def __init__(
         self, 
         config,
-        obs_normalizer=MeanStdNormalizer(),
+        obs_normalizer: BaseNormalizer = BaseNormalizer(),
     ):
         super().__init__()
 
@@ -120,7 +127,7 @@ class TD3LagReprVisionAgent(BaseAgent):
         self.cost_critic_old.train(False)
 
     @torch.no_grad()
-    def transform(self, img):
+    def transform(self, img: np.ndarray) -> torch.Tensor:
         if self.augment:
             processed_img = img.transpose(0,3,1,2) # (B,C,H,W)
             processed_img = to_tensor(processed_img)
@@ -131,14 +138,51 @@ class TD3LagReprVisionAgent(BaseAgent):
         return processed_img
     
 
-    def train(self, mode=True):
+    def train(self, mode: bool = True):
         self.training = mode
         self.actor.train(mode)
         self.critic.train(mode)
         self.cost_critic.train(mode)
         self.encoder.train(mode)
 
-    def forward(self, batch, states=None, add_noise=True):
+    def save_model(self, model_path):
+        # save the weight of `fixed_encoder` b.c. it is 
+        # used during evaluation
+        torch.save({
+            'actor': self.actor.state_dict(),
+            'critic': self.critic.state_dict(),
+            'cost_critic': self.cost_critic.state_dict(),
+            'encoder': self.fixed_encoder.state_dict(),
+            'feasi_head': self.feasi_head.state_dict(),
+            'proj_layer': self.proj_layer.state_dict(), 
+            'post_proj': self.post_proj.state_dict(),
+        }, f'{model_path}/model.pt')
+
+        with open(f'{model_path}/normalizer.stats', 'wb') as f:
+            pickle.dump(self.obs_normalizer.state_dict(), f)
+        
+
+    def load_model(self, model_path):
+        models = torch.load(f'{model_path}/model.pt')
+        self.actor.load_state_dict(models['actor'])
+        self.critic.load_state_dict(models['critic'])
+        self.cost_critic.load_state_dict(models['cost_critic'])
+        self.encoder.load_state_dict(models['encoder'])
+        self.feasi_head.load_state_dict(models['feasi_head'])
+        self.proj_layer.load_state_dict(models['proj_layer'])
+        self.post_proj.load_state_dict(models['post_proj'])
+
+        self.fixed_encoder.load_state_dict(self.encoder.state_dict())
+
+        with open(f'{model_path}/normalizer.stats', 'rb') as f:
+            self.obs_normalizer.load_state_dict(pickle.load(f))
+
+    def forward(
+        self, 
+        batch: Batch, 
+        states: Optional[Any] = None, 
+        add_noise: bool = True,
+    ) -> Tuple[Batch, Optional[Any]]:
         model = self.actor
         obs = batch.obs
         if self.augment:
@@ -159,10 +203,14 @@ class TD3LagReprVisionAgent(BaseAgent):
         soft_update(self.critic_old, self.critic, self._tau)
         soft_update(self.cost_critic_old, self.cost_critic, self._tau)
         soft_update(self.fixed_encoder, self.encoder, self._tau*0.2)
-        soft_update(self.fixed_encoder, self.encoder, self._tau*0.2)
         
 
-    def process_fn(self, batch, replay, indices=None):
+    def process_fn(
+        self,
+        batch: Batch, 
+        replay: ReplayBuffer, 
+        indices: Optional[np.ndarray] = None,
+    ) -> Batch:
         
         batch.obs = self.transform(batch.obs)
         batch.obs_next = self.transform(batch.obs_next)
@@ -174,6 +222,7 @@ class TD3LagReprVisionAgent(BaseAgent):
 
         B, N, H = len(indices), self._nstep_return, self._unroll_length
         
+        # the indices of {s_t, s_(t+1), ..., s_(t+H-1)}
         indices_HxB = [indices]
         for _ in range(H - 1):
             indices_HxB.append((indices_HxB[-1]+1) % len(replay))
@@ -189,21 +238,20 @@ class TD3LagReprVisionAgent(BaseAgent):
         batch_HxB.terminate = batch_HxB.terminate.reshape(H,B,1)
         batch_HxB.trunc = batch_HxB.trunc.reshape(H,B,1)
 
-        indices_nstep = [indices]
+        # the indices of {s_t, s_(t+1), ..., s_(t+N-1)}
+        indices_NxB = [indices] 
         for _ in range(N - 1):
-            indices_nstep.append(replay.next(indices_nstep[-1])) 
-            # `replay.next` means it will end at the end_flag
-            # which means if terminate[idx] or trunc[idx], replay.next(idx) = idx
-        indices_nstep = np.stack(indices_nstep, axis=0) # [N, B]
-        terminal_idx = indices_nstep[-1]
+            indices_NxB.append(replay.next(indices_NxB[-1])) 
+        indices_NxB = np.stack(indices_NxB, axis=0) # [N, B]
+        terminal_idx = indices_NxB[-1]
 
         terminal_batch = replay.get_batch(terminal_idx) # sampled from original replay buffer, needs normalizing
         terminal_batch.obs = self.transform(terminal_batch.obs) 
         terminal_batch.obs_next = self.transform(terminal_batch.obs_next)
 
-        batch.return_r, batch.return_c = self.compute_nstep_return(terminal_batch, replay, indices_nstep, N)
+        batch.return_r, batch.return_c = self.compute_nstep_return(terminal_batch, replay, indices_NxB, N)
         
-        feasi_NxB = self.compute_nstep_feasibility(terminal_batch, replay, indices_nstep, N)
+        feasi_NxB = self.compute_nstep_feasibility(terminal_batch, replay, indices_NxB, N)
         batch.feasi_HxB = to_tensor(feasi_NxB[:H])
 
         # mask=0.0 after `trunc`=True or `terminate`=True
@@ -221,7 +269,13 @@ class TD3LagReprVisionAgent(BaseAgent):
         return batch
             
     
-    def compute_nstep_return(self, terminal_batch, replay, indices_nstep, n_step):
+    def compute_nstep_return(
+        self, 
+        terminal_batch: Batch, 
+        replay: ReplayBuffer, 
+        indices_NxB: np.ndarray, 
+        n_step: int,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         end_flag = np.logical_or(replay.terminate, replay.trunc)
         
         returns = []
@@ -230,12 +284,18 @@ class TD3LagReprVisionAgent(BaseAgent):
             next_q = self._next_q(terminal_batch, value_type)  # (B, 1)
             next_q = to_numpy(next_q) * (1 - terminal_batch.terminate.reshape(-1,1))
             
-            n_step_return = _nstep_return(r_or_c, end_flag, next_q, indices_nstep, self._gamma, n_step)
+            n_step_return = _nstep_return(r_or_c, end_flag, next_q, indices_NxB, self._gamma, n_step)
             returns.append(n_step_return)
         return returns
     
-    def compute_nstep_feasibility(self, terminal_batch, replay, indices_nstep, n_step):
-        N, B = n_step, indices_nstep.shape[1]
+    def compute_nstep_feasibility(
+        self, 
+        terminal_batch: Batch, 
+        replay: ReplayBuffer, 
+        indices_NxB: np.ndarray, 
+        n_step: int,
+    ) -> np.ndarray:
+        N, B = n_step, indices_NxB.shape[1]
         end_flag = np.logical_or(replay.terminate, replay.trunc)
         cost = replay.cost
 
@@ -245,12 +305,16 @@ class TD3LagReprVisionAgent(BaseAgent):
             feasi_next = DiscDist(feasi_next_logits, self.bucket_low, self.bucket_high, self.n_buckets).mean() # (1,B,1)
             feasi_next = to_numpy(feasi_next)[0,:,0] * (1 - terminal_batch.terminate) # (B, )
 
-        feasi_score = _nstep_feasbility(cost, end_flag, feasi_next, indices_nstep, self._f_discount, N) # (N,B)
+        feasi_score = _nstep_feasbility(cost, end_flag, feasi_next, indices_NxB, self._f_discount, N) # (N,B)
         feasi_score = feasi_score.reshape(N,B,1)
         return feasi_score
     
 
-    def _next_q(self, batch, value_type='rew'):
+    def _next_q(
+        self, 
+        batch: Batch, 
+        value_type: str = 'rew',
+    ) -> torch.Tensor:
         with torch.no_grad():
             zs_next = self.fixed_encoder.zs(batch.obs_next)
             a_next = self.actor_old(zs_next)
@@ -265,13 +329,21 @@ class TD3LagReprVisionAgent(BaseAgent):
                 next_q, _ = self.cost_critic_old(zs_next, a_next).max(dim=1, keepdim=True)
         return next_q
 
-    def _target_q(self, batch, value_type='rew'):
+    def _target_q(
+        self, 
+        batch: Batch, 
+        value_type: str = 'rew',
+    ) -> torch.Tensor:
         next_q = self._next_q(batch)
         r_or_c = getattr(batch, value_type)
         target_q = r_or_c + (1.0-batch.terminate) * self._gamma * next_q
         return target_q
 
-    def learn(self, batch, batch_size=None):
+    def learn(
+        self, 
+        batch: Batch, 
+        batch_size: Optional[int] = None,
+    ) -> Dict[str, Union[float, np.ndarray]]:
         metrics = {}
         met = self.train_encoder(batch)
         metrics.update(met)
@@ -279,7 +351,10 @@ class TD3LagReprVisionAgent(BaseAgent):
         metrics.update(met)
         return metrics
     
-    def train_encoder(self, batch):
+    def train_encoder(
+        self, 
+        batch: Batch, 
+    ) -> Dict[str, Union[float, np.ndarray]]:
         metrics = {}
 
         dyn_coef = 1.0
@@ -324,7 +399,10 @@ class TD3LagReprVisionAgent(BaseAgent):
         metrics['loss/encoder'] = encoder_loss.item()
         return metrics
     
-    def train_actor_critic(self, batch):
+    def train_actor_critic(
+        self, 
+        batch: Batch, 
+    ) -> Dict[str, Union[float, np.ndarray]]:
         metrics = {}
         weight = getattr(batch, "weight", 1.0)
         weight = to_tensor(weight)
@@ -380,6 +458,6 @@ class TD3LagReprVisionAgent(BaseAgent):
 
         return metrics
 
-    def update_lagrangian_multiplier(self, Jc):
+    def update_lagrangian_multiplier(self, Jc: float):
         # update cost coef
         self.lagrg_updater.update(Jc, self.cost_limit)

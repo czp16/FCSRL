@@ -1,6 +1,7 @@
 exp/
 wandb/
 *.ipynb
+run_exp.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

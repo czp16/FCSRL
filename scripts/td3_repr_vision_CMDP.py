@@ -57,7 +57,8 @@ def main():
         context="spawn",
     )
     test_envs = VectorEnv(
-        [lambda: VisionWrapper(ActionRepeatWrapper(gym.make(env_cfg.name), 4)) for _ in range(1)])
+        [lambda: VisionWrapper(ActionRepeatWrapper(gym.make(env_cfg.name), 4)) for _ in range(1)]
+    )
 
     # seed
     set_seed(misc_cfg.seed)
@@ -69,10 +70,8 @@ def main():
     agent = TD3LagReprVisionAgent(config, obs_normalizer=normalizer)
     
     # save model
-    # if not os.path.exists(f"{trainer_cfg.model_dir']}/{env_cfg.name}"):
-    #     os.mkdir(f"{trainer_cfg.model_dir']}/{env_cfg.name}", 0o777)
-    # save_path = f"{trainer_cfg.model_dir']}/{env_cfg.name}/td7_lag_seed_{HP['misc']['seed']}"
-    save_path = None
+    os.makedirs(f"{trainer_cfg.model_dir}/{env_cfg.name}", 0o777, exist_ok=True)
+    save_path = f"{trainer_cfg.model_dir}/{env_cfg.name}/vision_{args.repr_type}_seed_{misc_cfg.seed}"
 
     def stop_fn(r):
         return False # r > env.spec.reward_threshold
@@ -129,8 +128,6 @@ def main():
 
         train_collector.close()
         test_collector.close()
-        train_envs.close()
-        test_envs.close()
     
     else:
         pass

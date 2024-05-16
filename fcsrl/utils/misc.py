@@ -1,3 +1,4 @@
+from typing import Union
 import os
 import types
 import numpy as np
@@ -6,7 +7,7 @@ import torch.nn.functional as F
 
 from fcsrl.utils.config import DeviceConfig
 
-def to_tensor(x):
+def to_tensor(x: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
     if isinstance(x, torch.Tensor):
         if x.device != DeviceConfig.DEVICE:
             return x.to(device=DeviceConfig.DEVICE)
@@ -16,7 +17,7 @@ def to_tensor(x):
     x = torch.as_tensor(x, device=DeviceConfig.DEVICE, dtype=torch.float32)
     return x
 
-def to_numpy(x):
+def to_numpy(x: Union[torch.Tensor, np.ndarray]) -> np.ndarray:
     if isinstance(x, torch.Tensor):
         x = x.detach().cpu().numpy()
     return x

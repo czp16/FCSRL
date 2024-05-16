@@ -7,7 +7,6 @@ import gymnasium as gym
 import safety_gymnasium as sgym
 import torch
 import time
-from torch.utils.tensorboard import SummaryWriter
 import wandb
 
 from fcsrl.agent import TD3LagReprAgent
@@ -61,14 +60,11 @@ def main():
         test_envs.seed(misc_cfg.seed)
 
     normalizer = MeanStdNormalizer() if config.agent.obs_normalizer == "MeanStdNormalizer" else BaseNormalizer()
-    
     agent = TD3LagReprAgent(config, obs_normalizer=normalizer)
     
     # save model
-    # if not os.path.exists(f"{trainer_cfg.model_dir}/{env_cfg.name}"):
-    #     os.makedirs(f"{trainer_cfg.model_dir}/{env_cfg.name}", 0o777)
-    # save_path = f"{trainer_cfg.model_dir}/{env_cfg.name}/td7_lag_{args.repr_type}"
-    save_path = None
+    os.makedirs(f"{trainer_cfg.model_dir}/{env_cfg.name}", 0o777, exist_ok=True)
+    save_path = f"{trainer_cfg.model_dir}/{env_cfg.name}/td3lag_{args.repr_type}_seed_{misc_cfg.seed}"
 
     def stop_fn(r):
         return False # r > env.spec.reward_threshold
@@ -125,8 +121,6 @@ def main():
 
         train_collector.close()
         test_collector.close()
-        train_envs.close()
-        test_envs.close()
     
     else:
         pass

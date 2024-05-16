@@ -5,7 +5,6 @@ import torch
 import time
 import numpy as np
 
-from fcsrl.agent import BaseAgent
 from fcsrl.data import Batch, CacheBuffer, VectorCacheBuffer, ReplayBuffer
 from fcsrl.env import BaseMultiEnv
 from fcsrl.utils import to_numpy, BaseNormalizer
@@ -14,7 +13,7 @@ class Collector:
 
     def __init__(
         self, 
-        agent: BaseAgent, 
+        agent,
         env: Union[gym.Env, BaseMultiEnv], 
         replay: Optional[ReplayBuffer] = None,
         act_space: Optional[gym.Space] = None, 

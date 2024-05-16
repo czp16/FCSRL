@@ -1,3 +1,4 @@
+from typing import Optional, Any, Tuple, Dict, Union, List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,17 +8,17 @@ import pickle
 from copy import deepcopy
 
 from fcsrl.agent import BaseAgent
-from fcsrl.data import Batch
+from fcsrl.data import Batch, ReplayBuffer
 from fcsrl.network import MLP, Encoder, EncodedActorDeter, EnsembleEncodedCritic
 from fcsrl.utils import DeviceConfig, to_tensor, GaussianNoise, to_numpy, _nstep_return, \
-    MeanStdNormalizer, PIDLagrangianUpdater, DiscDist, soft_update, cosine_sim_loss
+    BaseNormalizer, MeanStdNormalizer, PIDLagrangianUpdater, DiscDist, soft_update, cosine_sim_loss
 
 
 class TD3LagReprAgent(BaseAgent):
     def __init__(
         self, 
         config,
-        obs_normalizer=MeanStdNormalizer(),
+        obs_normalizer: BaseNormalizer = MeanStdNormalizer(),
     ):
         super().__init__()
 
@@ -101,40 +102,51 @@ class TD3LagReprAgent(BaseAgent):
         self.cost_critic_old.train(False)
     
 
-    def train(self, mode=True):
+    def train(self, mode: bool = True):
         self.training = mode
         self.actor.train(mode)
         self.critic.train(mode)
         self.cost_critic.train(mode)
         self.encoder.train(mode)
 
-    # def save_model(self, model_path):
-    #     torch.save({
-    #         'actor': self.actor.state_dict(),
-    #         'critic': self.critic.state_dict(),
-    #         'cost_critic': self.cost_critic.state_dict(),
-    #         'encoder': self.encoder.state_dict(),
-    #         'f_head': self.feasi_head.state_dict(),
-    #     }, f'{model_path}/model.pt')
+    def save_model(self, model_path):
+        # save the weight of `fixed_encoder` b.c. it is 
+        # used during evaluation
+        torch.save({
+            'actor': self.actor.state_dict(),
+            'critic': self.critic.state_dict(),
+            'cost_critic': self.cost_critic.state_dict(),
+            'encoder': self.fixed_encoder.state_dict(),
+            'feasi_head': self.feasi_head.state_dict(),
+            'proj_layer': self.proj_layer.state_dict(), 
+            'post_proj': self.post_proj.state_dict(),
+        }, f'{model_path}/model.pt')
 
-    #     with open(f'{model_path}/normalizer.stats', 'wb') as f:
-    #         pickle.dump(self.obs_normalizer.state_dict(), f)
+        with open(f'{model_path}/normalizer.stats', 'wb') as f:
+            pickle.dump(self.obs_normalizer.state_dict(), f)
         
 
-    # def load_model(self, model_path):
-    #     models = torch.load(f'{model_path}/model.pt')
-    #     self.actor.load_state_dict(models['actor'])
-    #     self.critic.load_state_dict(models['critic'])
-    #     self.cost_critic.load_state_dict(models['cost_critic'])
-    #     self.encoder.load_state_dict(models['encoder'])
-    #     self.feasi_head.load_state_dict(models['f_head'])
+    def load_model(self, model_path):
+        models = torch.load(f'{model_path}/model.pt')
+        self.actor.load_state_dict(models['actor'])
+        self.critic.load_state_dict(models['critic'])
+        self.cost_critic.load_state_dict(models['cost_critic'])
+        self.encoder.load_state_dict(models['encoder'])
+        self.feasi_head.load_state_dict(models['feasi_head'])
+        self.proj_layer.load_state_dict(models['proj_layer'])
+        self.post_proj.load_state_dict(models['post_proj'])
 
-    #     self.fixed_encoder.load_state_dict(self.encoder.state_dict())
+        self.fixed_encoder.load_state_dict(self.encoder.state_dict())
 
-    #     with open(f'{model_path}/normalizer.stats', 'rb') as f:
-    #         self.obs_normalizer.load_state_dict(pickle.load(f))
+        with open(f'{model_path}/normalizer.stats', 'rb') as f:
+            self.obs_normalizer.load_state_dict(pickle.load(f))
 
-    def forward(self, batch, states=None, add_noise=True):
+    def forward(
+        self, 
+        batch: Batch, 
+        states: Optional[Any] = None,
+        add_noise: bool = True,
+    ) -> Tuple[Batch, Optional[Any]]:
         model = self.actor
         obs = batch.obs
 
@@ -155,7 +167,12 @@ class TD3LagReprAgent(BaseAgent):
         soft_update(self.fixed_encoder, self.encoder, self._tau*0.2)
         
 
-    def process_fn(self, batch, replay, indices=None):
+    def process_fn(
+        self,
+        batch: Batch, 
+        replay: ReplayBuffer, 
+        indices: Optional[np.ndarray] = None,
+    ) -> Batch:
         batch.obs = self.obs_normalizer(batch.obs)
         batch.obs_next = self.obs_normalizer(batch.obs_next)
         
@@ -202,7 +219,12 @@ class TD3LagReprAgent(BaseAgent):
         return batch
             
     
-    def compute_nstep_return(self, replay, indices, n_step):
+    def compute_nstep_return(
+        self, 
+        replay: ReplayBuffer, 
+        indices: np.ndarray, 
+        n_step: int,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         end_flag = np.logical_or(replay.terminate, replay.trunc)
 
         B = len(indices)
@@ -227,7 +249,10 @@ class TD3LagReprAgent(BaseAgent):
             returns.append(n_step_return)
         return returns
     
-    def compute_TD_lambda_return(self, batch_NxB):
+    def compute_TD_lambda_return(
+        self, 
+        batch_NxB: Batch,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         N, B = batch_NxB.rew.shape[0], batch_NxB.rew.shape[1]
         TD_lambda = 1.0 # TD(1) is equivalent to n_step return
 
@@ -251,7 +276,10 @@ class TD3LagReprAgent(BaseAgent):
             returns.append(ret)
         return returns # List[(N,B,1), (N,B,1)]
     
-    def compute_nstep_feasibility(self, batch_NxB):
+    def compute_nstep_feasibility(
+        self, 
+        batch_NxB: Batch,
+    ) -> np.ndarray:
         N, B = batch_NxB.rew.shape[0], batch_NxB.rew.shape[1]
         discount = 0.9
 
@@ -272,7 +300,11 @@ class TD3LagReprAgent(BaseAgent):
         return feasi_score
     
 
-    def _next_q(self, batch, value_type='rew'):
+    def _next_q(
+        self, 
+        batch: Batch, 
+        value_type: str = 'rew',
+    ) -> torch.Tensor:
         with torch.no_grad():
             zs_next = self.fixed_encoder.zs(batch.obs_next)
             a_next = self.actor_old(batch.obs_next, zs_next)
@@ -289,13 +321,21 @@ class TD3LagReprAgent(BaseAgent):
             
         return next_q
 
-    def _target_q(self, batch, value_type='rew'):
+    def _target_q(
+        self, 
+        batch: Batch, 
+        value_type: str = 'rew',
+    ) -> torch.Tensor:
         next_q = self._next_q(batch)
         r_or_c = getattr(batch, value_type)
         target_q = r_or_c + (1.0-batch.terminate) * self._gamma * next_q
         return target_q
 
-    def learn(self, batch, batch_size=None):
+    def learn(
+        self, 
+        batch: Batch, 
+        batch_size: Optional[int] = None,
+    ) -> Dict[str, Union[float, np.ndarray]]:
         metrics = {}
         met = self.train_encoder(batch)
         metrics.update(met)
@@ -303,7 +343,10 @@ class TD3LagReprAgent(BaseAgent):
         metrics.update(met)
         return metrics
     
-    def train_encoder(self, batch):
+    def train_encoder(
+        self, 
+        batch: Batch, 
+    ) -> Dict[str, Union[float, np.ndarray]]:
         metrics = {}
         dyn_coef = 0.5
         feasi_coef = 1.0
@@ -346,7 +389,10 @@ class TD3LagReprAgent(BaseAgent):
         metrics['loss/encoder'] = encoder_loss.item()
         return metrics
     
-    def train_actor_critic(self, batch):
+    def train_actor_critic(
+        self, 
+        batch: Batch, 
+    ) -> Dict[str, Union[float, np.ndarray]]:
         metrics = {}
         weight = getattr(batch, "weight", 1.0)
         weight = to_tensor(weight)
@@ -403,6 +449,6 @@ class TD3LagReprAgent(BaseAgent):
 
         return metrics
 
-    def update_lagrangian_multiplier(self, Jc):
+    def update_lagrangian_multiplier(self, Jc: int):
         # update cost coef
         self.lagrg_updater.update(Jc, self.cost_limit)

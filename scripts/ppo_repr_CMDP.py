@@ -59,10 +59,11 @@ def main():
         test_envs.seed(misc_cfg.seed)
 
     normalizer = MeanStdNormalizer() if config.agent.obs_normalizer == "MeanStdNormalizer" else BaseNormalizer()
-
     agent = PPOLagReprAgent(config, obs_normalizer=normalizer)
     
-    save_path = None
+    # save model
+    os.makedirs(f"{trainer_cfg.model_dir}/{env_cfg.name}", 0o777, exist_ok=True)
+    save_path = f"{trainer_cfg.model_dir}/{env_cfg.name}/ppolag_{args.repr_type}_seed_{misc_cfg.seed}"
 
     # trainer
     def stop_fn(r):

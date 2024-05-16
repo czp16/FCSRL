@@ -1,12 +1,14 @@
+from typing import Optional, Any, Tuple, Dict, Union, List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as D
 import numpy as np
+import pickle
 from copy import deepcopy
 
 from fcsrl.agent import BaseAgent
-from fcsrl.data import Batch
+from fcsrl.data import Batch, ReplayBuffer
 from fcsrl.network import MLP, Encoder, EncodedCritic, EncodedActorProb
 from fcsrl.utils import DeviceConfig, to_tensor, to_numpy, MeanStdNormalizer, PIDLagrangianUpdater, \
     DiscDist, soft_update, cosine_sim_loss
@@ -90,42 +92,53 @@ class PPOLagReprAgent(BaseAgent):
         self.actor_old = deepcopy(self.actor)
 
         self.fixed_encoder.train(False)
-        self.fixed_encoder.train(False)
         self.actor_old.train(False)
 
-    def train(self, mode=True):
+    def train(self, mode: bool = True):
         self.training = mode
         self.actor.train(mode)
         self.critic.train(mode)
         self.cost_critic.train(mode)
     
-    # def save_model(self, model_path):
-    #     torch.save({
-    #         'actor': self.actor.state_dict(),
-    #         'critic': self.critic.state_dict(),
-    #         'actor_optim': self.actor_optim.state_dict(),
-    #         'critic_optim': self.critic_optim.state_dict(),
-    #     }, f'{model_path}.model')
+    def save_model(self, model_path):
+        # save the weight of `fixed_encoder` b.c. it is 
+        # used during evaluation
+        torch.save({
+            'actor': self.actor.state_dict(),
+            'critic': self.critic.state_dict(),
+            'cost_critic': self.cost_critic.state_dict(),
+            'encoder': self.fixed_encoder.state_dict(),
+            'feasi_head': self.feasi_head.state_dict(),
+            'proj_layer': self.proj_layer.state_dict(), 
+            'post_proj': self.post_proj.state_dict(),
+        }, f'{model_path}/model.pt')
 
-    #     with open(f'{model_path}.stats', 'wb') as f:
-    #         pickle.dump(self.obs_normalizer.state_dict(), f)
+        with open(f'{model_path}/normalizer.stats', 'wb') as f:
+            pickle.dump(self.obs_normalizer.state_dict(), f)
         
 
-    # def load_model(self, model_path):
-    #     models = torch.load(f'{model_path}.model')
-    #     self.actor.load_state_dict(models['actor'])
-    #     self.critic.load_state_dict(models['critic'])
-    #     self.actor_optim.load_state_dict(models['actor_optim'])
-    #     self.critic_optim.load_state_dict(models['critic_optim'])
+    def load_model(self, model_path):
+        models = torch.load(f'{model_path}/model.pt')
+        self.actor.load_state_dict(models['actor'])
+        self.critic.load_state_dict(models['critic'])
+        self.cost_critic.load_state_dict(models['cost_critic'])
+        self.encoder.load_state_dict(models['encoder'])
+        self.feasi_head.load_state_dict(models['feasi_head'])
+        self.proj_layer.load_state_dict(models['proj_layer'])
+        self.post_proj.load_state_dict(models['post_proj'])
 
-    #     self.actor_old = deepcopy(self.actor)
-    #     self.actor_old.eval()
+        self.fixed_encoder.load_state_dict(self.encoder.state_dict())
 
-    #     with open(f'{model_path}.stats', 'rb') as f:
-    #         self.obs_normalizer.load_state_dict(pickle.load(f))
+        with open(f'{model_path}/normalizer.stats', 'rb') as f:
+            self.obs_normalizer.load_state_dict(pickle.load(f))
     
 
-    def process_fn(self, batch, replay, indices=None):
+    def process_fn(
+        self,
+        batch: Batch, 
+        replay: ReplayBuffer, 
+        indices: Optional[np.ndarray] = None,
+    ) -> Batch:
         batch.obs = self.obs_normalizer(batch.obs)
         batch.obs_next = self.obs_normalizer(batch.obs_next)
         
@@ -146,9 +159,10 @@ class PPOLagReprAgent(BaseAgent):
         return batch
     
 
-    def _get_returns(self, batch):
-        # assert batch.trunc[-1] == 1.0, \
-        #     'The trajectory does not end with truncate=True or terminate=True.'
+    def _get_returns(
+        self, 
+        batch: Batch,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         returns = []
         for value_type in ["rew", "cost"]:
             ret = getattr(batch, value_type).copy()
@@ -162,7 +176,10 @@ class PPOLagReprAgent(BaseAgent):
             returns.append(ret)
         return returns
     
-    def _get_feasibility(self, batch):
+    def _get_feasibility(
+        self, 
+        batch: Batch,
+    ) -> np.ndarray:
         feasi = np.zeros_like(batch.cost)
         for i in reversed(range(len(feasi))):
             if batch.trunc[i] or i == len(feasi) - 1:
@@ -175,7 +192,11 @@ class PPOLagReprAgent(BaseAgent):
                 feasi[i] = np.maximum(batch.cost[i], self._f_discount * (1-batch.terminate[i]) * feasi[i+1])
         return feasi
     
-    def forward(self, batch, states=None):
+    def forward(
+        self, 
+        batch: Batch, 
+        states: Optional[Any] = None,
+    ) -> Tuple[Batch, Optional[Any]]:
         model = self.actor
         zs = self.fixed_encoder.zs(batch.obs)
         
@@ -196,12 +217,22 @@ class PPOLagReprAgent(BaseAgent):
         
         soft_update(self.fixed_encoder, self.encoder, self._tau)
         
-    def _next_v(self, obs_next, zs_next, value_type="rew"):
+    def _next_v(
+        self, 
+        obs_next: np.ndarray, 
+        zs_next: np.ndarray, 
+        value_type: str = "rew",
+    ) -> torch.Tensor:
         model = self.critic if value_type == "rew" else self.cost_critic
         value = model(obs_next, zs_next)
         return value
 
-    def learn(self, batch, batch_size=None, repeat=1):
+    def learn(
+        self, 
+        batch: Batch, 
+        batch_size: Optional[int] = None, 
+        repeat: int = 1,
+    ) -> Dict[str, List[float]]:
         
         # 1&2. compute reward & cost Advantage
         with torch.no_grad():
@@ -256,7 +287,10 @@ class PPOLagReprAgent(BaseAgent):
         
         return metrics
     
-    def train_encoder(self, batch):
+    def train_encoder(
+        self, 
+        batch: Batch,
+    ) -> Dict[str, float]:
         metrics = {}
         dyn_coef = 0.5
         feasi_coef = 1.0
@@ -294,7 +328,10 @@ class PPOLagReprAgent(BaseAgent):
         metrics['encoder'] = encoder_loss.item()
         return metrics
 
-    def train_actor_critic(self, batch):
+    def train_actor_critic(
+        self, 
+        batch: Batch,
+    ) -> Dict[str, float]:
         metrics = {}
         with torch.no_grad():
             fixed_zs = self.fixed_encoder.zs(batch.obs)
@@ -353,9 +390,7 @@ class PPOLagReprAgent(BaseAgent):
 
         return metrics
 
-
-
-    def update_lagrangian_multiplier(self, Jc):
+    def update_lagrangian_multiplier(self, Jc: float):
         # update cost coef
         self.lagrg_updater.update(Jc, self.cost_limit)
         

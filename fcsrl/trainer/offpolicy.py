@@ -5,11 +5,10 @@ from tqdm import tqdm
 import wandb
 
 from fcsrl.trainer.utils import test_agent, gather_info
-from fcsrl.agent import BaseAgent
 from fcsrl.data import Collector
 
 def offpolicy_trainer(
-    agent: BaseAgent, 
+    agent, 
     train_collector: Collector, 
     test_collector: Collector, 
     n_episode_warmup: int,
@@ -123,8 +122,7 @@ def offpolicy_trainer(
             # save model
             if save_path:
                 _path = os.path.join(save_path, f"epoch_{epoch}")
-                if not os.path.exists(_path):
-                    os.makedirs(_path, 0o777)
+                os.makedirs(_path, 0o777, exist_ok=True)
                 agent.save_model(_path)
         
         wandb.log({
