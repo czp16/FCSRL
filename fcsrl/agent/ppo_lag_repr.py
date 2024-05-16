@@ -8,8 +8,8 @@ from copy import deepcopy
 from fcsrl.agent import BaseAgent
 from fcsrl.data import Batch
 from fcsrl.network import MLP, Encoder, EncodedCritic, EncodedActorProb
-from fcsrl.utils import Config, to_tensor, to_numpy, MeanStdNormalizer, PIDLagrangianUpdater, \
-    DiscDist,  soft_update, cosine_sim_loss
+from fcsrl.utils import DeviceConfig, to_tensor, to_numpy, MeanStdNormalizer, PIDLagrangianUpdater, \
+    DiscDist, soft_update, cosine_sim_loss
 
 
 class PPOLagReprAgent(BaseAgent):
@@ -24,6 +24,7 @@ class PPOLagReprAgent(BaseAgent):
         agent_cfg = config.agent
         self._tau = agent_cfg.soft_update_tau
         self._gamma = agent_cfg.discount_gamma
+        self._f_discount = agent_cfg.feasibility_discount
         self._gae_lambda = agent_cfg.gae_lambda
         self._max_grad_norm = agent_cfg.max_grad_norm
         self._clip_ratio_eps = agent_cfg.clip_ratio_eps
@@ -59,10 +60,10 @@ class PPOLagReprAgent(BaseAgent):
 
         self.encoder = Encoder(
             s_dim, a_dim, z_dim, zsa_out_dim, net_cfg.encoder_hidden_dim,
-        ).to(Config.DEVICE)
-        self.feasi_head = MLP(z_dim, net_cfg.encoder_hidden_dim, self.n_buckets).to(Config.DEVICE)
-        self.proj_layer = MLP(z_dim, net_cfg.encoder_hidden_dim, z_dim // 2).to(Config.DEVICE)
-        self.post_proj = nn.Linear(z_dim // 2, z_dim // 2, bias=False).to(Config.DEVICE)
+        ).to(DeviceConfig.DEVICE)
+        self.feasi_head = MLP(z_dim, net_cfg.encoder_hidden_dim, self.n_buckets).to(DeviceConfig.DEVICE)
+        self.proj_layer = MLP(z_dim, net_cfg.encoder_hidden_dim, z_dim // 2).to(DeviceConfig.DEVICE)
+        self.post_proj = nn.Linear(z_dim // 2, z_dim // 2, bias=False).to(DeviceConfig.DEVICE)
         
         encoder_para = sum([list(net.parameters()) for net in [
             self.encoder, self.feasi_head, self.proj_layer, self.post_proj]
@@ -70,15 +71,15 @@ class PPOLagReprAgent(BaseAgent):
         
         self.actor = EncodedActorProb(
             s_dim, a_dim, z_dim, net_cfg.actor_hidden_dim,
-        ).to(Config.DEVICE)
+        ).to(DeviceConfig.DEVICE)
 
         self.critic = EncodedCritic(
             s_dim, 0, z_dim, net_cfg.r_critic_hidden_dim,
-        ).to(Config.DEVICE)
+        ).to(DeviceConfig.DEVICE)
 
         self.cost_critic = EncodedCritic(
             s_dim, 0, z_dim, net_cfg.c_critic_hidden_dim,
-        ).to(Config.DEVICE)
+        ).to(DeviceConfig.DEVICE)
 
         self.encoder_optim = torch.optim.Adam(encoder_para, lr=net_cfg.encoder_lr)
         self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=net_cfg.actor_lr)
@@ -169,9 +170,9 @@ class PPOLagReprAgent(BaseAgent):
                 feasi_next_logits = self.feasi_head(zs_next).unsqueeze(0)
                 feasi_next = DiscDist(feasi_next_logits, self.bucket_low, self.bucket_high, self.n_buckets).mean()
                 feasi_next = to_numpy(feasi_next.squeeze())
-                feasi[i] = np.maximum(batch.cost[i], 0.9 * feasi_next)
+                feasi[i] = np.maximum(batch.cost[i], self._f_discount * (1-batch.terminate[i]) * feasi_next)
             else:
-                feasi[i] = np.maximum(batch.cost[i], 0.9 * feasi[i+1])
+                feasi[i] = np.maximum(batch.cost[i], self._f_discount * (1-batch.terminate[i]) * feasi[i+1])
         return feasi
     
     def forward(self, batch, states=None):

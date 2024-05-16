@@ -1,3 +1,4 @@
+from typing import Union, Optional
 import torch
 import numpy as np
 
@@ -9,13 +10,13 @@ class Batch(object):
         super().__init__()
         self.__dict__.update(kwargs)
 
-    def __len__(self):
+    def __len__(self) -> int:
         length = min([
             len(self.__dict__[k]) for k in self.__dict__.keys()
             if self.__dict__[k] is not None])
         return length
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: Union[int, np.ndarray]):
         b = Batch()
         for k in self.__dict__.keys():
             if self.__dict__[k] is not None:
@@ -57,7 +58,7 @@ class Batch(object):
                 raise TypeError(s)
                 
 
-    def sampler(self, size=None, permute=True):
+    def sampler(self, size: Optional[int]=None, permute: bool=True):
         length = self.__len__()
         if size is None:
             size = length
@@ -70,7 +71,7 @@ class Batch(object):
             yield self[index[temp:temp + size]]
             temp += size
 
-    def ensemble_sampler(self, size=None, num_ensemble=1):
+    def ensemble_sampler(self, size: Optional[int]=None, num_ensemble: int=1):
         '''
         for bootstrap, yield [num_ensemble, size, ...]
         '''

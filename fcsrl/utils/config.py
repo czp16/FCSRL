@@ -1,6 +1,6 @@
 import torch
 
-class Config:
+class DeviceConfig:
     DEVICE = torch.device('cpu')
 
     def __init__(self):
@@ -11,6 +11,6 @@ class Config:
             cudaid = self.hyperparams['misc']['cudaid']
         torch.set_num_threads(4)
         if cudaid >= 0:
-            Config.DEVICE = torch.device('cuda:%d' % (cudaid))
+            DeviceConfig.DEVICE = torch.device('cuda:%d' % (cudaid))
         else:
-            Config.DEVICE = torch.device('cpu')
+            DeviceConfig.DEVICE = torch.device('cpu')

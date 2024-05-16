@@ -1,6 +1,7 @@
 
 agent:
     discount_gamma: 0.99
+    feasibility_discount: 0.9
     soft_update_tau: 0.05 # for encoder
     gae_lambda: 0.97
     clip_ratio_eps: 0.2

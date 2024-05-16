@@ -4,9 +4,6 @@ import argparse
 import yaml
 import numpy as np
 import gymnasium as gym
-# import mujoco_py
-import bullet_safety_gym
-# import safety_gym
 import safety_gymnasium as sgym
 import torch
 import time
@@ -17,7 +14,7 @@ from fcsrl.agent import TD3LagReprAgent
 from fcsrl.trainer import offpolicy_trainer
 from fcsrl.data import Collector, ReplayBuffer
 from fcsrl.env import SubprocVectorEnv, GoalWrapper, ActionRepeatWrapper
-from fcsrl.utils import Config, set_seed, BaseNormalizer, MeanStdNormalizer, dict2attr
+from fcsrl.utils import DeviceConfig, set_seed, BaseNormalizer, MeanStdNormalizer, dict2attr
 
 def main():
     parser = argparse.ArgumentParser()
@@ -30,7 +27,7 @@ def main():
     parser.add_argument('--repr_type', type=str, default="FCSRL")
     args = parser.parse_args()
 
-    Config().select_device(args.cudaid)
+    DeviceConfig().select_device(args.cudaid)
 
     with open(args.hyperparams, 'r') as f:
         cfg_dict = yaml.safe_load(f)
@@ -64,14 +61,6 @@ def main():
         test_envs.seed(misc_cfg.seed)
 
     normalizer = MeanStdNormalizer() if config.agent.obs_normalizer == "MeanStdNormalizer" else BaseNormalizer()
-
-    # cost_lim_for_J = config
-    max_ep_len = env_cfg.max_episode_len
-    def J_to_q(j):
-        q = j * (1 - config.agent.discount_gamma ** max_ep_len) / (1 - config.agent.discount_gamma) / max_ep_len
-        return q
-    # cost_lim_for_q = J_to_q(cost_lim_for_J)
-    # cost_lim = cost_lim_for_J if HP['Lagrangian']['update_by_J'] else cost_lim_for_q
     
     agent = TD3LagReprAgent(config, obs_normalizer=normalizer)
     
@@ -106,14 +95,18 @@ def main():
         if not lagrg_cfg.schedule_threshold:
             threshold = lagrg_cfg.constraint_threshold
         else:
-            threshold = [
+            threshold = (
                 lagrg_cfg.threshold_start,
                 lagrg_cfg.threshold_end,
                 lagrg_cfg.schedule_epoch,
-            ]
+            )
 
         # trainer and start training
-        metric_convert_fn = None if lagrg_cfg.update_by_J else J_to_q
+        if lagrg_cfg.update_by_J:
+            metric_convert_fn = None 
+        else: 
+            raise NotImplementedError("Lagrangian update by Q function is not supported.")
+        
         result = offpolicy_trainer(
             agent, 
             train_collector, 
@@ -137,15 +130,6 @@ def main():
     
     else:
         pass
-        # env = gym.make(env_cfg.name)
-        # env.seed(np.random.randint(300))
-        # save_path = f"{trainer_cfg.model_dir}/{env_cfg.name}/td7_lag_seed_{misc_cfg.seed}"
-        # agent.load_model(save_path)
-        # agent.eval()
-    
-        # collector = Collector(agent, env, ReplayBuffer(500000))
-        # result = collector.collect(n_episode=1, render_path=misc_cfg.render_path)
-        # print(f'Final reward: {result["reward"]}, cost: {result["cost"]}, length: {result["length"]}')
 
 if __name__ == "__main__":
     main()

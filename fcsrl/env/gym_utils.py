@@ -19,11 +19,11 @@ class GoalWrapper(gym.Wrapper):
         return next_s, r, terminate, trunc, info
     
 class ActionRepeatWrapper(gym.Wrapper):
-    def __init__(self, env, n_repeat):
+    def __init__(self, env: gym.Env, n_repeat: int):
         super().__init__(env)
         self.n_repeat = n_repeat
 
-    def step(self, action: Any):
+    def step(self, action):
         total_r = 0.0
         total_c = 0.0
         total_term = total_trunc = total_psuedo_term = False

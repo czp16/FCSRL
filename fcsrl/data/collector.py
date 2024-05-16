@@ -1,10 +1,11 @@
-from typing import Optional, List
+from typing import Optional, List, Union
 
 import gymnasium as gym
 import torch
 import time
 import numpy as np
 
+from fcsrl.agent import BaseAgent
 from fcsrl.data import Batch, CacheBuffer, VectorCacheBuffer, ReplayBuffer
 from fcsrl.env import BaseMultiEnv
 from fcsrl.utils import to_numpy, BaseNormalizer
@@ -13,8 +14,8 @@ class Collector:
 
     def __init__(
         self, 
-        agent, 
-        env, 
+        agent: BaseAgent, 
+        env: Union[gym.Env, BaseMultiEnv], 
         replay: Optional[ReplayBuffer] = None,
         act_space: Optional[gym.Space] = None, 
         store_keywords: Optional[List[str]] = None,
@@ -103,8 +104,13 @@ class Collector:
             self.env.close()
 
 
-    def collect(self, n_step=0, n_episode=0, render_path='', random=False):
-
+    def collect(
+        self, 
+        n_step: int = 0, 
+        n_episode: int = 0, 
+        render_path: str = '', 
+        random: bool = False,
+    ):
         assert sum([n_step!=0, n_episode!=0]) == 1, \
             'only 1 of n_step or n_episode should > 0'
         if render_path:
@@ -251,9 +257,6 @@ class Collector:
         self._obs = obs_next
 
         duration = time.time() - start_time
-        # step/s and episode/s
-        # step_ps = current_step / duration
-        # episode_ps = current_episode / duration
 
         self.collect_step += current_step
         self.collect_episode += current_episode
@@ -278,6 +281,5 @@ class Collector:
         
         return return_info
 
-    def sample(self, batch_size):
+    def sample(self, batch_size: int):
         return self.replay.sample(batch_size) # batch_data, indices
-    

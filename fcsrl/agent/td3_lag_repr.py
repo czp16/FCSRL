@@ -9,7 +9,7 @@ from copy import deepcopy
 from fcsrl.agent import BaseAgent
 from fcsrl.data import Batch
 from fcsrl.network import MLP, Encoder, EncodedActorDeter, EnsembleEncodedCritic
-from fcsrl.utils import Config, to_tensor, GaussianNoise, to_numpy, _nstep_return, \
+from fcsrl.utils import DeviceConfig, to_tensor, GaussianNoise, to_numpy, _nstep_return, \
     MeanStdNormalizer, PIDLagrangianUpdater, DiscDist, soft_update, cosine_sim_loss
 
 
@@ -62,10 +62,10 @@ class TD3LagReprAgent(BaseAgent):
 
         self.encoder = Encoder(
             s_dim, a_dim, z_dim, zsa_out_dim, net_cfg.encoder_hidden_dim,
-        ).to(Config.DEVICE)
-        self.feasi_head = MLP(z_dim, net_cfg.encoder_hidden_dim, self.n_buckets).to(Config.DEVICE)
-        self.proj_layer = MLP(z_dim, net_cfg.encoder_hidden_dim, z_dim // 2).to(Config.DEVICE)
-        self.post_proj = nn.Linear(z_dim // 2, z_dim // 2, bias=False).to(Config.DEVICE)
+        ).to(DeviceConfig.DEVICE)
+        self.feasi_head = MLP(z_dim, net_cfg.encoder_hidden_dim, self.n_buckets).to(DeviceConfig.DEVICE)
+        self.proj_layer = MLP(z_dim, net_cfg.encoder_hidden_dim, z_dim // 2).to(DeviceConfig.DEVICE)
+        self.post_proj = nn.Linear(z_dim // 2, z_dim // 2, bias=False).to(DeviceConfig.DEVICE)
         
         encoder_para = sum([list(net.parameters()) for net in [
             self.encoder, self.feasi_head, self.proj_layer, self.post_proj]
@@ -73,15 +73,15 @@ class TD3LagReprAgent(BaseAgent):
         
         self.actor = EncodedActorDeter(
             s_dim, a_dim, z_dim, net_cfg.actor_hidden_dim,
-        ).to(Config.DEVICE)
+        ).to(DeviceConfig.DEVICE)
 
         self.critic = EnsembleEncodedCritic(
             2, s_dim, a_dim, z_dim, net_cfg.r_critic_hidden_dim,
-        ).to(Config.DEVICE)
+        ).to(DeviceConfig.DEVICE)
 
         self.cost_critic = EnsembleEncodedCritic(
             2, s_dim, a_dim, z_dim, net_cfg.c_critic_hidden_dim,
-        ).to(Config.DEVICE)
+        ).to(DeviceConfig.DEVICE)
 
         encoder_para = self.encoder.parameters()
 

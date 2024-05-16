@@ -1,12 +1,12 @@
+from typing import List, Callable, Optional, Tuple, Dict, Any
 import numpy as np
 import multiprocessing as mp
 from multiprocessing import Process, Pipe
-import time
 
 from fcsrl.env.utils import CloudpickleWrapper
 
 class BaseMultiEnv:
-    def __init__(self, env_fns):
+    def __init__(self, env_fns: List[Callable]):
         self._env_fns = env_fns
         self.env_num = len(env_fns)
 
@@ -31,11 +31,14 @@ class BaseMultiEnv:
 
 class VectorEnv(BaseMultiEnv):
 
-    def __init__(self, env_fns):
+    def __init__(self, env_fns: List[Callable]):
         super().__init__(env_fns)
         self.envs = [env_fn() for env_fn in env_fns]
 
-    def reset(self, index=None):
+    def reset(
+        self, 
+        index: Optional[int] = None,
+    ) -> Tuple[np.ndarray, Dict[str, Any]] :
         if index is None:
             ret_list = [e.reset() for e in self.envs]
             self._obs = np.stack([r[0] for r in ret_list])
@@ -48,7 +51,10 @@ class VectorEnv(BaseMultiEnv):
         
         return self._obs, self._info
 
-    def step(self, action):
+    def step(
+        self, 
+        action: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict[str, Any]]:
         assert len(action) == self.env_num
         result = [e.step(a) for e,a in zip(self.envs, action)]
         self._obs, self._rew, self._terminate, self._trunc, self._info = zip(*result)
@@ -59,7 +65,7 @@ class VectorEnv(BaseMultiEnv):
         self._info = np.stack(self._info)
         return self._obs, self._rew, self._terminate, self._trunc, self._info
 
-    def seed(self, seed=None):
+    def seed(self, seed: Optional[int] = None):
         if np.isscalar(seed):
             seed = [seed + _ for _ in range(self.env_num)]
         elif seed is None:
@@ -108,7 +114,11 @@ def worker(parent, p, env_fn_wrapper):
 
 class SubprocVectorEnv(BaseMultiEnv):
 
-    def __init__(self, env_fns, context=None):
+    def __init__(
+        self, 
+        env_fns: List[Callable], 
+        context: Optional[str] = None,
+    ):
         super().__init__(env_fns)
         ctx = mp.get_context(context)
         self.closed = False
@@ -125,7 +135,10 @@ class SubprocVectorEnv(BaseMultiEnv):
         for c in self.child_remote:
             c.close()
 
-    def step(self, action):
+    def step(
+        self, 
+        action: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict[str, Any]]:
         assert len(action) == self.env_num
         for p, a in zip(self.parent_remote, action):
             p.send(['step', a])

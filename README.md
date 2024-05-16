@@ -1,5 +1,10 @@
 # FCSRL
 
+## TODO
+- introduction, paper link, website link
+- validate most results
+- save load model
+
 ## Installation
 1) We recommend to use Anaconda or Miniconda to manage python environment.
 2) Create conda env,
@@ -25,4 +30,3 @@ For image-based task,
 ```shell
 python scripts/td3_repr_vision_CMDP.py --env_name SafetyPointGoal2Gymnasium-v0 --cudaid 0 --seed 100
 ```
-Note here we still adopt the original env and use a [observation wrapper](./fcsrl/env/gym_utils.py#L48) based to get vision observation to accelerate the training.

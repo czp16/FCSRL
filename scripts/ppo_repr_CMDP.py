@@ -12,7 +12,7 @@ from fcsrl.agent import PPOLagReprAgent
 from fcsrl.trainer import onpolicy_trainer
 from fcsrl.data import Collector, ReplayBuffer
 from fcsrl.env import SubprocVectorEnv, GoalWrapper, ActionRepeatWrapper
-from fcsrl.utils import Config, set_seed, BaseNormalizer, MeanStdNormalizer, dict2attr
+from fcsrl.utils import DeviceConfig, set_seed, BaseNormalizer, MeanStdNormalizer, dict2attr
 
 
 def main():
@@ -26,7 +26,7 @@ def main():
     parser.add_argument('--repr_type', type=str, default="FCSRL")
     args = parser.parse_args()
 
-    Config().select_device(args.cudaid)
+    DeviceConfig().select_device(args.cudaid)
 
     with open(args.hyperparams, 'r') as f:
         cfg_dict = yaml.safe_load(f)
@@ -119,16 +119,6 @@ def main():
 
     else:
         pass
-        # env = SubprocVectorEnv(
-        #     [lambda: ActionRepeatWrapper(gym.make(env_cfg.name)) for _ in range(20)])
-        # env.seed(100)
-        # save_path = f"{trainer_cfg.model_dir}/{env_cfg.name}/ppo_repr_lag_seed_{misc_cfg.seed}"
-        # agent.load_model(save_path)
-        # agent.eval()
-
-        # collector = Collector(agent, env, ReplayBuffer(100000))
-        # result = collector.collect(n_episode=1, render_path=misc_cfg.render_path)
-        # print(f'Final reward: {result["reward"]}, cost: {result["cost"]}, length: {result["length"]}')
 
 if __name__ == "__main__":
     main()

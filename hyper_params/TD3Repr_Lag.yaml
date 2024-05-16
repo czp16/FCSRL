@@ -1,6 +1,7 @@
 
 agent:
     discount_gamma: 0.99
+    feasibility_discount: 0.9
     rew_norm: false
     soft_update_tau: 0.05
     explore_noise_std: 0.05

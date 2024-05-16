@@ -1,3 +1,4 @@
+from typing import List
 import numpy as np
 import torch
 import torch.nn as nn
@@ -10,7 +11,10 @@ LOG_SIG_MAX = 1
 LOG_SIG_MIN = -5
 
 class DummyActor(nn.Module):
-    def __init__(self, a_dim):
+    def __init__(
+        self, 
+        a_dim: int,
+    ):
         super().__init__()
         self.action_dim = a_dim
 
@@ -21,7 +25,12 @@ class DummyActor(nn.Module):
 
 
 class ActorDeter(nn.Module):
-    def __init__(self, s_dim, a_dim, hidden_dims=[256, 256]):
+    def __init__(
+        self, 
+        s_dim: int, 
+        a_dim: int, 
+        hidden_dims: List[int] = [256, 256],
+    ):
         super().__init__()
         self.net = MLP(s_dim, hidden_dims, a_dim)
 
@@ -33,7 +42,12 @@ class ActorDeter(nn.Module):
 
 
 class ActorProb(nn.Module):
-    def __init__(self, s_dim, a_dim, hidden_dims=[256, 256]):
+    def __init__(
+        self, 
+        s_dim: int, 
+        a_dim: int, 
+        hidden_dims: List[int] = [256, 256],
+    ):
         super().__init__()
         self.net = MLP(s_dim, hidden_dims)
         self.mu_net = nn.Linear(hidden_dims[-1], a_dim)
@@ -49,7 +63,12 @@ class ActorProb(nn.Module):
 
 
 class ActorProb2(nn.Module):
-    def __init__(self, s_dim, a_dim, hidden_dims):
+    def __init__(
+        self, 
+        s_dim, 
+        a_dim, 
+        hidden_dims
+    ):
         super().__init__()
         self.model = []
         last_dim = s_dim
@@ -70,7 +89,12 @@ class ActorProb2(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self, s_dim, a_dim=0, hidden_dims=[]):
+    def __init__(
+        self, 
+        s_dim: int, 
+        a_dim: int = 0, 
+        hidden_dims: List[int] = [],
+    ):
         super().__init__()
         self.net = MLP(s_dim+a_dim, hidden_dims, 1)
 
@@ -86,7 +110,13 @@ class Critic(nn.Module):
 
 
 class EnsembleCritic(nn.Module):
-    def __init__(self, ensemble_size, s_dim, a_dim=0, hidden_dims=[]):
+    def __init__(
+        self, 
+        ensemble_size: int, 
+        s_dim: int, 
+        a_dim: int = 0, 
+        hidden_dims: List[int] = [],
+    ):
         super().__init__()
         self.networks = nn.ModuleList(
             [Critic(s_dim, a_dim, hidden_dims) for _ in range(ensemble_size)]

@@ -11,7 +11,7 @@ import time
 from fcsrl.agent import BaseAgent
 from fcsrl.data import Batch
 from fcsrl.network import MLP, ConvEncoder, ActorDeter, EnsembleCritic
-from fcsrl.utils import Config, to_tensor, GaussianNoise, to_numpy, _nstep_return, \
+from fcsrl.utils import DeviceConfig, to_tensor, GaussianNoise, to_numpy, _nstep_return, \
     MeanStdNormalizer, PIDLagrangianUpdater, DiscDist, cosine_sim_loss, soft_update
 
 # an accelerated version to compute the N-step feasibility
@@ -47,6 +47,7 @@ class TD3LagReprVisionAgent(BaseAgent):
         agent_cfg = config.agent
         self._tau = agent_cfg.soft_update_tau
         self._gamma = agent_cfg.discount_gamma
+        self._f_discount = agent_cfg.feasibility_discount
         self._noise = GaussianNoise(sigma=agent_cfg.explore_noise_std)
         # self._rew_norm = agent_cfg.rew_norm
         self._nstep_return = agent_cfg.nstep_return
@@ -84,10 +85,10 @@ class TD3LagReprVisionAgent(BaseAgent):
         self.bucket_low, self.bucket_high = net_cfg.discrete_range
 
         # also predict reward and sum cost starting from the first state of subtrajectoy
-        self.encoder = ConvEncoder(s_shape, a_dim, z_dim, net_cfg.encoder_hidden_dim).to(Config.DEVICE)
-        self.feasi_head = MLP(z_dim, net_cfg.encoder_hidden_dim, self.n_buckets).to(Config.DEVICE)
-        self.proj_layer = MLP(z_dim, net_cfg.encoder_hidden_dim, z_dim // 2).to(Config.DEVICE)
-        self.post_proj = nn.Linear(z_dim // 2, z_dim // 2, bias=False).to(Config.DEVICE)
+        self.encoder = ConvEncoder(s_shape, a_dim, z_dim, net_cfg.encoder_hidden_dim).to(DeviceConfig.DEVICE)
+        self.feasi_head = MLP(z_dim, net_cfg.encoder_hidden_dim, self.n_buckets).to(DeviceConfig.DEVICE)
+        self.proj_layer = MLP(z_dim, net_cfg.encoder_hidden_dim, z_dim // 2).to(DeviceConfig.DEVICE)
+        self.post_proj = nn.Linear(z_dim // 2, z_dim // 2, bias=False).to(DeviceConfig.DEVICE)
         
         encoder_para = sum([list(net.parameters()) for net in [
             self.encoder, self.feasi_head, self.proj_layer, self.post_proj]
@@ -95,13 +96,13 @@ class TD3LagReprVisionAgent(BaseAgent):
         
         self.actor = ActorDeter(
             z_dim, a_dim, net_cfg.actor_hidden_dim,
-        ).to(Config.DEVICE)
+        ).to(DeviceConfig.DEVICE)
         self.critic = EnsembleCritic(
             2, z_dim, a_dim, net_cfg.r_critic_hidden_dim,
-        ).to(Config.DEVICE)
+        ).to(DeviceConfig.DEVICE)
         self.cost_critic = EnsembleCritic(
             2, z_dim, a_dim, net_cfg.c_critic_hidden_dim,
-        ).to(Config.DEVICE)
+        ).to(DeviceConfig.DEVICE)
 
         self.encoder_optim = torch.optim.Adam(encoder_para, lr=net_cfg.encoder_lr)
         self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=net_cfg.actor_lr)
@@ -237,7 +238,6 @@ class TD3LagReprVisionAgent(BaseAgent):
         N, B = n_step, indices_nstep.shape[1]
         end_flag = np.logical_or(replay.terminate, replay.trunc)
         cost = replay.cost
-        discount = 0.9
 
         with torch.no_grad():
             zs_next = self.fixed_encoder.zs(terminal_batch.obs_next) # (B, ...)
@@ -245,7 +245,7 @@ class TD3LagReprVisionAgent(BaseAgent):
             feasi_next = DiscDist(feasi_next_logits, self.bucket_low, self.bucket_high, self.n_buckets).mean() # (1,B,1)
             feasi_next = to_numpy(feasi_next)[0,:,0] * (1 - terminal_batch.terminate) # (B, )
 
-        feasi_score = _nstep_feasbility(cost, end_flag, feasi_next, indices_nstep, discount, N) # (N,B)
+        feasi_score = _nstep_feasbility(cost, end_flag, feasi_next, indices_nstep, self._f_discount, N) # (N,B)
         feasi_score = feasi_score.reshape(N,B,1)
         return feasi_score
     

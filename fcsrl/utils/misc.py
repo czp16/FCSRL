@@ -4,16 +4,16 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from fcsrl.utils.config import Config
+from fcsrl.utils.config import DeviceConfig
 
 def to_tensor(x):
     if isinstance(x, torch.Tensor):
-        if x.device != Config.DEVICE:
-            return x.to(device=Config.DEVICE)
+        if x.device != DeviceConfig.DEVICE:
+            return x.to(device=DeviceConfig.DEVICE)
         else:
             return x
     # x = np.asarray(x, dtype=float)
-    x = torch.as_tensor(x, device=Config.DEVICE, dtype=torch.float32)
+    x = torch.as_tensor(x, device=DeviceConfig.DEVICE, dtype=torch.float32)
     return x
 
 def to_numpy(x):
@@ -71,6 +71,13 @@ def dict2attr(cfg_dict):
     config = types.SimpleNamespace()
     recusive_update(config, cfg_dict)
     return config
+
+# compute the constraint defined by Q-value according to the constraint defined by return J
+# E[\sum_t c(s_t, a_t)] \leq \eps_J ==> E[Q_c(s_t, a_t)] \leq \eps_q
+# input \eps_J, output \eps_q
+def J_to_q(j, discount, max_episode_len):
+    q = j * (1 - discount ** max_episode_len) / (1 - discount) / max_episode_len
+    return q
 
 # key function for n step return
 # refer to https://github.com/thu-ml/tianshou/blob/master/tianshou/policy/base.py#L349 

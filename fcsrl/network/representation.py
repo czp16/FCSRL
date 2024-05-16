@@ -1,3 +1,4 @@
+from typing import List, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
@@ -14,7 +15,14 @@ def AvgL1Norm(x, eps=1e-8):
     return x/x.abs().mean(-1,keepdim=True).clamp(min=eps)
 
 class Encoder(nn.Module):
-    def __init__(self, s_dim, a_dim, z_dim, zsa_out_dim, hidden_dims=[256,256]):
+    def __init__(
+        self, 
+        s_dim: int, 
+        a_dim: int, 
+        z_dim: int, 
+        zsa_out_dim: int, 
+        hidden_dims: List[int] = [256,256],
+    ):
         super().__init__()
 
         # state encoder
@@ -38,7 +46,13 @@ class Encoder(nn.Module):
     
 
 class EncodedActorDeter(nn.Module):
-    def __init__(self, s_dim, a_dim, z_dim=256, hidden_dims=[256,256]):
+    def __init__(
+        self, 
+        s_dim: int, 
+        a_dim: int, 
+        z_dim: int = 256, 
+        hidden_dims: List[int] = [256,256],
+    ):
         super().__init__()
 
         self.l0 = nn.Linear(s_dim, hidden_dims[0])
@@ -55,7 +69,13 @@ class EncodedActorDeter(nn.Module):
     
 
 class EncodedActorProb(nn.Module):
-    def __init__(self, s_dim, a_dim, z_dim, hidden_dims=[256, 256]):
+    def __init__(
+        self, 
+        s_dim: int, 
+        a_dim: int, 
+        z_dim: int, 
+        hidden_dims: List[int] = [256, 256],
+    ):
         super().__init__()
         self.l0 = nn.Linear(s_dim, hidden_dims[0])
         self.net = MLP(z_dim+hidden_dims[0], hidden_dims)
@@ -75,7 +95,13 @@ class EncodedActorProb(nn.Module):
     
     
 class EncodedCritic(nn.Module):
-    def __init__(self, s_dim, a_dim=0, z_dim=256, hidden_dims=[256, 256]):
+    def __init__(
+        self, 
+        s_dim: int, 
+        a_dim: int = 0, 
+        z_dim: int = 256, 
+        hidden_dims: List[int] = [256, 256],
+    ):
         super().__init__()
         
         self.l0 = nn.Linear(s_dim+a_dim, hidden_dims[0])
@@ -100,7 +126,14 @@ class EncodedCritic(nn.Module):
         return logit
     
 class EnsembleEncodedCritic(nn.Module):
-    def __init__(self, ensemble_size, s_dim, a_dim=0, z_dim=256, hidden_dims=[256, 256]):
+    def __init__(
+        self, 
+        ensemble_size: int, 
+        s_dim: int, 
+        a_dim: int = 0, 
+        z_dim: int = 256, 
+        hidden_dims: List[int] = [256, 256],
+    ):
         super().__init__()
         self.networks = nn.ModuleList(
             [EncodedCritic(s_dim, a_dim, z_dim, hidden_dims) for _ in range(ensemble_size)]
@@ -116,15 +149,15 @@ class EnsembleEncodedCritic(nn.Module):
 class ConvEncoder(nn.Module):
     def __init__(
         self,
-        input_shape,
-        a_dim,
-        z_dim,
-        hidden_dims,
-        depth=16,
-        act="SiLU",
-        norm=True,
-        kernel_size=4,
-        minres=4,
+        input_shape: Tuple[int, int, int],
+        a_dim: int,
+        z_dim: int,
+        hidden_dims: List[int],
+        depth: int = 16,
+        act: str="SiLU",
+        norm: bool = True,
+        kernel_size: int = 4,
+        minres: int = 4,
     ):
         super(ConvEncoder, self).__init__()
         act = getattr(torch.nn, act)

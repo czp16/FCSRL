@@ -1,8 +1,6 @@
 from typing import List, Optional
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.distributions as D
 
 class MLP(nn.Module):
 
@@ -35,6 +33,6 @@ class MLP(nn.Module):
         self.layers = nn.Sequential(*layers)
         # TODO: weight init
 
-    def forward(self, input_):
+    def forward(self, input_: torch.Tensor) -> torch.Tensor:
         out_ = self.layers(input_)
         return out_

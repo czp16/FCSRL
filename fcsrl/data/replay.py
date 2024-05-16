@@ -1,9 +1,9 @@
-from typing import List, Optional
+from typing import List, Optional, Any, Dict
 import numpy as np
 from fcsrl.data import Batch
 
 class Storage:
-    def __init__(self, size):
+    def __init__(self, size: int):
         self._maxsize = size
         self._size = 0
         self._index = 0
@@ -29,7 +29,7 @@ class Storage:
     def reset(self):
         self._index = self._size = 0
 
-    def set_placeholder(self, key, value):
+    def set_placeholder(self, key: str, value: Any):
         if isinstance(value, np.ndarray):
             setattr(self, key, np.zeros((self._maxsize, *value.shape), dtype=np.float32))
         elif isinstance(value, dict):
@@ -37,7 +37,7 @@ class Storage:
         elif np.isscalar(value):
             setattr(self, key, np.zeros((self._maxsize,)))
     
-    def add(self, data):
+    def add(self, data: Dict[str, Any]):
         assert isinstance(data, dict)
         for k, v in data.items():
             if v is None:
@@ -51,7 +51,7 @@ class Storage:
         self._index = (self._index + 1) % self._maxsize
 
 
-    def add_list(self, data, length):
+    def add_list(self, data: Dict[str, Any], length: int):
         assert isinstance(data, dict)
 
         _tmp_idx = self._index + length
@@ -96,7 +96,7 @@ class Storage:
         return np.array(to_indices)
 
 
-    def sample(self, batch_size):
+    def sample(self, batch_size: int):
         if batch_size > 0:
             indices = np.random.choice(self._size, batch_size)
         else: # sample all available data when batch_size=0
@@ -112,7 +112,7 @@ class CacheBuffer(Storage):
     def __init__(self):
         super().__init__(size=0)
 
-    def add(self, data):
+    def add(self, data: Dict[str, Any]):
         assert isinstance(data, dict)
         for k, v in data.items():
             if v is None:
@@ -132,17 +132,17 @@ class CacheBuffer(Storage):
 
 
 class VectorCacheBuffer:
-    def __init__(self, num_buffer):
+    def __init__(self, num_buffer: int):
         self.num_buffer = num_buffer
         self.buffers = [CacheBuffer() for _ in range(self.num_buffer)]
 
     def __getitem__(self, buffer_id):
         return self.buffers[buffer_id]
 
-    def add(self, data, buffer_id):
+    def add(self, data: Dict, buffer_id: int):
         self.buffers[buffer_id].add(data)
 
-    def reset(self, buffer_ids=None):
+    def reset(self, buffer_ids: Optional[int] = None):
         if buffer_ids is None:
             buffer_ids = np.arange(self.num_buffer)
         if np.isscalar(buffer_ids):
