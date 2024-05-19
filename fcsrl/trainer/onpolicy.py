@@ -118,7 +118,7 @@ def onpolicy_trainer(
 
         # test
         result = test_agent(agent, test_collector, n_episode_test)
-        if best_epoch == -1 \
+        if best_epoch == -1 or best_cost > J_cost_thres \
             or (best_reward < result['reward'] and result['cost'] < J_cost_thres):
             best_reward, best_cost = result['reward'], result['cost']
             best_epoch = epoch

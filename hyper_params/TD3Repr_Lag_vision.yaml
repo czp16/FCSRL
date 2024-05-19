@@ -50,7 +50,7 @@ Lagrangian:
     KP: 0.02
     KI: 0.005
     KD: 0.01
-    max_lambda: &MAX_LAMBDA 0.75
+    max_lambda: &MAX_LAMBDA 0.5
     constraint_threshold: &CONSTRAINT_THRESHOLD 10
     update_by_J: True  # else update by E[q_c]
     schedule_threshold: True

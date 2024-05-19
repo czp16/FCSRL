@@ -10,23 +10,17 @@
   <a href="https://arxiv.org/abs/" target='_blank'>
     <img src="https://img.shields.io/badge/arXiv-1234.12345-blue">
   </a>
-  <a href="https://sites.google.com/view/safedreamer" target='_blank'>
+  <a href="https://sites.google.com/view/FCSRL" target='_blank'>
     <img src="https://img.shields.io/badge/Website-FCSRL-green">
   </a>
 </p>
 
-## TODO
-- [] introduction, paper link, website link
-- [] validate most results
-- [x] save load model
-- bib
-
 ## Overview
 This repo provides an official implementation of *Feasibility Consistent Representation Learning for Safe Reinforcement Learning* (ICML 2024). In this paper, we propose a feasibility-based representation learning method to extract safety-related features and improve the safe reinforcement learning.
 
-<div style="text-align: center;">
+<p align="center">
     <img src="assets/framework.png" alt="framework" width=60% >
-</div>
+</p>
 
 ## Installation
 1) We recommend to use Anaconda or Miniconda to manage python environment.
@@ -60,14 +54,14 @@ os.environ["PYOPENGL_PLATFORM"] = "osmesa"
 ```
 in [script](scripts/td3_repr_vision_CMDP.py#L2). However, it can be very low if you train without GPU on image-based tasks.
 
-## Citation
+<!-- ## Citation
 
 If you find our work helpful, please cite:
 
 ```bibtex
 @inproceedings{
 }
-```
+``` -->
 
 ## Acknowledgement
 This repo is partly based on [Tianshou](https://github.com/thu-ml/tianshou).

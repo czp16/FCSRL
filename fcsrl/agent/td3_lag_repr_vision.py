@@ -357,7 +357,7 @@ class TD3LagReprVisionAgent(BaseAgent):
     ) -> Dict[str, Union[float, np.ndarray]]:
         metrics = {}
 
-        dyn_coef = 1.0
+        dyn_coef = 0.5
         feasi_coef = 1.0
         H, B = batch.act_HxB.shape[0], batch.act_HxB.shape[1]
         
