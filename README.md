@@ -7,8 +7,8 @@
 </p>
 
 <p align="center">
-  <a href="https://arxiv.org/abs/" target='_blank'>
-    <img src="https://img.shields.io/badge/arXiv-1234.12345-blue">
+  <a href="https://arxiv.org/abs/2405.11718" target='_blank'>
+    <img src="https://img.shields.io/badge/arXiv-2405.11718-blue">
   </a>
   <a href="https://sites.google.com/view/FCSRL" target='_blank'>
     <img src="https://img.shields.io/badge/Website-FCSRL-green">
@@ -54,14 +54,18 @@ os.environ["PYOPENGL_PLATFORM"] = "osmesa"
 ```
 in [script](scripts/td3_repr_vision_CMDP.py#L2). However, it can be very low if you train without GPU on image-based tasks.
 
-<!-- ## Citation
+## Citation
 
 If you find our work helpful, please cite:
 
 ```bibtex
-@inproceedings{
+@article{cen2024feasibility,
+  title={Feasibility Consistent Representation Learning for Safe Reinforcement Learning},
+  author={Cen, Zhepeng and Yao, Yihang and Liu, Zuxin and Zhao, Ding},
+  journal={arXiv preprint arXiv:2405.11718},
+  year={2024}
 }
-``` -->
+```
 
 ## Acknowledgement
 This repo is partly based on [Tianshou](https://github.com/thu-ml/tianshou).
