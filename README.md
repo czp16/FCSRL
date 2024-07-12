@@ -16,7 +16,7 @@
 </p>
 
 ## Overview
-This repo provides an official implementation of *Feasibility Consistent Representation Learning for Safe Reinforcement Learning* (ICML 2024). In this paper, we propose a feasibility-based representation learning method to extract safety-related features and improve the safe reinforcement learning.
+This repo provides an official implementation of *Feasibility Consistent Representation Learning for Safe Reinforcement Learning* (ICML 2024). In this paper, we propose a feasibility-based representation learning method to extract safety-related features and improve the safe reinforcement learning. Our method **FCSRL+TD3-Lag achieves SOTA performance on safety-gymnasium benchmark** among model-free safe RL algorithms. See [paper](https://arxiv.org/abs/2405.11718) for more details.
 
 <p align="center">
     <img src="assets/framework.png" alt="framework" width=60% >
